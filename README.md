@@ -1,4 +1,9 @@
 # TL;DR;
+# Build the base images (copy to predownloaded folder the pdi-ce-9.4.0.0-343.zip file )
+```bash
+docker build --no-cache -t base_kettle .
+```
+
 
 ```bash
 cd test
@@ -117,3 +122,5 @@ Considerations:
 
 * You should use the value using megabytes; ex.: `2048` for 2g
 * If no variable is provided, the jvm runs with 2048m;
+
+

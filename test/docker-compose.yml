@@ -1,7 +1,7 @@
 version: '3'
 services:
     pentaho-kettle:
-        image: oncase/pentaho-kettle:latest
+        image: base_kettle:latest
         build: ..
         depends_on: 
           - pgsql-pentaho-kettle

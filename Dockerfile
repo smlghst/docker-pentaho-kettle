@@ -1,35 +1,21 @@
-FROM    ubuntu:18.04
+FROM busybox AS unpack
+WORKDIR /unpack
 
-# Install primary dependencies
-RUN sed 's/main$/main universe/' -i /etc/apt/sources.list && \
-	apt-get clean && apt-get update && \
-  apt-get install -y locales && \
-  locale-gen en_US.UTF-8 && \
-  apt-get install -y software-properties-common unzip git lftp sudo zip curl wget && \
-	sudo apt install -y openjdk-8-jdk && \
-	apt-get clean && \
-	rm -rf /var/lib/apt/lists/* && \
-  rm -rf /var/cache/oracle-jdk8-installer && \
-	echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
-	rm -rf /tmp/*
+#Arguments definition
+ARG KETTLE_ZIP_FILE=pdi-ce-9.4.0.0-343.zip
 
-# Set the locale
-ENV LANG en_US.UTF-8  
-ENV LANGUAGE en_US:en  
-ENV LC_ALL en_US.UTF-8 
-RUN update-locale LANG=en_US.UTF-8 LC_MESSAGES=POSIX
+COPY ./predownloaded/$KETTLE_ZIP_FILE /
+RUN echo "$KETTLE_ZIP_FILE"
 
-# Fix certificate issues, found as of 
-# https://bugs.launchpad.net/ubuntu/+source/ca-certificates-java/+bug/983302
-RUN apt-get install -y ca-certificates-java && \
-	apt-get clean && \
-	update-ca-certificates -f && \
-	rm -rf /var/lib/apt/lists/* && \
-	rm -rf /var/cache/oracle-jdk8-installer;
 
-# Making the right java available
-ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
-RUN export JAVA_HOME
+RUN unzip /$KETTLE_ZIP_FILE && \
+    rm -f /$KETTLE_ZIP_FILE && \
+	find ./data-integration -name "*.bat" -type f -delete && \
+	rm -rf ./data-integration/docs && \
+	rm -rf ./data-integration/libswt/win64 && \
+	rm -rf "./data-integration/Data Service JDBC Driver"
+
+FROM  eclipse-temurin:17-jre-jammy
 
 # Configs directories and users for pentaho 
 RUN mkdir /pentaho && \
@@ -37,19 +23,12 @@ RUN mkdir /pentaho && \
   mkdir /home/pentaho/.kettle && \
   mkdir /home/pentaho/.aws && \
   groupadd -r pentaho && \
-  useradd -r -g pentaho -p $(perl -e'print crypt("pentaho", "aa")' ) -G sudo pentaho && \ 
+  useradd -r -g pentaho -p $(perl -e'print crypt("pentaho", "salt")' ) -G sudo pentaho && \
   chown -R pentaho.pentaho /pentaho && \ 
   chown -R pentaho.pentaho /home/pentaho
+ 
 
-WORKDIR /pentaho
-USER pentaho
-ARG PENTAHO_DOWNLOAD_URL=https://netcologne.dl.sourceforge.net/project/pentaho/Pentaho%208.3/client-tools/pdi-ce-8.3.0.0-371.zip
-
-# Downloads pentaho
-RUN wget -q -O kettle.zip ${PENTAHO_DOWNLOAD_URL} && \
-  unzip -qq kettle.zip && \
-  rm -rf kettle.zip
-
+COPY --from=unpack --chown=pentaho:pentaho /unpack/data-integration /pentaho/data-integration
 WORKDIR /pentaho/data-integration
 
 # Adds connections config files
@@ -60,16 +39,8 @@ RUN sed -i \
   's/-Xmx[0-9]\+m/-Xmx\$\{_RUN_XMX:-2048\}m/g' spoon.sh 
 
 ENV PDI_HOME /pentaho/data-integration
+ENV SKIP_WEBKITGTK_CHECK=1
 
-RUN sudo apt-get update && \
-    sudo apt-get install -y \
-        python3-pip \
-        python3-setuptools \
-        groff \
-        less \
-    && pip3 install --upgrade pip \
-    && sudo apt-get clean
-
-RUN sudo python3 -m pip --no-cache-dir install --upgrade awscli 
+USER pentaho
 
 ENTRYPOINT ["/pentaho/data-integration/run.sh"]
